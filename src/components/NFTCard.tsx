@@ -1,26 +1,33 @@
 import Image from "next/image"
-
-interface NFTCardProps {}
+import { useRef } from "react"
+import { useAccount } from "wagmi"
 
 interface NFTCardProps {
+  tokenId: number
   name: string
   description: string
   imageURL: string
   owner: string
+  onClick: (owner: string, tokenId: number, text: string) => void
 }
 
-export function NFTCard({ name, description, imageURL, owner }: NFTCardProps) {
-  const imageNode = {
-    originalSrc: "https://fakeimg.pl/600x400/?text=Hello",
-    altText: "altText",
-  }
+export function NFTCard({
+  tokenId,
+  name,
+  description,
+  imageURL,
+  owner,
+  onClick,
+}: NFTCardProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { address } = useAccount()
 
   return (
     <a className="h-120 w-72 rounded shadow-lg mx-auto border border-palette-lighter">
       <div className="h-72 border-b-2 border-palette-lighter relative">
         <Image
-          src={imageNode.originalSrc}
-          alt={imageNode.altText}
+          src={imageURL}
+          alt={description}
           layout="fill"
           className="transform duration-500 ease-in-out hover:scale-110"
         />
@@ -30,7 +37,9 @@ export function NFTCard({ name, description, imageURL, owner }: NFTCardProps) {
           {name}
         </div>
         <div className="text-lg text-gray-600 p-4 font-primary font-light">
-          Owner: {owner}
+          Owner:
+          {`${owner.slice(0, 6)}...${owner.slice(-4)}`}{" "}
+          {owner === address && " Me"}
         </div>
 
         <div
@@ -42,11 +51,16 @@ export function NFTCard({ name, description, imageURL, owner }: NFTCardProps) {
               <input
                 className="appearance-none bg-transparent border-none w-full text-gray-700 mr-3 py-1 px-2 leading-tight focus:outline-none"
                 type="text"
+                ref={inputRef}
                 placeholder="Yo Bob here"
               />
               <button
                 className="flex-shrink-0 bg-teal-500 hover:bg-teal-700 border-teal-500 hover:border-teal-700 text-sm border-4 text-white py-1 px-2 rounded"
                 type="button"
+                onClick={() =>
+                  inputRef.current &&
+                  onClick(owner, tokenId, inputRef.current.value)
+                }
               >
                 Steal
               </button>
@@ -57,3 +71,18 @@ export function NFTCard({ name, description, imageURL, owner }: NFTCardProps) {
     </a>
   )
 }
+// {
+//   "internalType": "address",
+//   "name": "from",
+//   "type": "address"
+// },
+// {
+//   "internalType": "address",
+//   "name": "to",
+//   "type": "address"
+// },
+// {
+//   "internalType": "uint256",
+//   "name": "tokenId",
+//   "type": "uint256"
+// }

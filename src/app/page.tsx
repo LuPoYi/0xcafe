@@ -1,15 +1,25 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { readContract } from "@wagmi/core"
+
 import { ConnectButton } from "@rainbow-me/rainbowkit"
 import Image from "next/image"
 import { NFTCard } from "@/components/NFTCard"
 import nftABI from "@/contract/NFTabi.json"
+import {
+  useAccount,
+  useContractReads,
+  useContractWrite,
+  usePrepareContractWrite,
+} from "wagmi"
 
-import { useContractReads } from "wagmi"
+const nftContractAddress = "0xC5eCb63B680Fd35fb6d2ca2eb29d4Fbd489a1EDc"
+const fakejsonUri =
+  "https://www.fakejson.online/api/json?name=AAABBBCCC&description=This%20image%20shows%20the%20true%20nature%20of%20NFT.&image=https://fakeimg.pl/500x500/?text="
 
 const nftContract: Record<string, any> = {
-  address: "0x1540F4ed07e3e8557F8EB1Fe2d248446F39ef6bA",
+  address: nftContractAddress,
   abi: nftABI,
 }
 
@@ -25,17 +35,17 @@ const contractCalls = [1, 2, 3].flatMap((tokenId) => [
     args: [tokenId],
   },
 ])
-
-const defaultNftState = {
-  name: "",
-  description: "",
-  image: "",
-  owner: "",
+interface tokenURIInfo {
+  tokenId: number
+  name: string
+  description: string
+  image: string
+  owner: string
 }
+
 export default function Home() {
-  const [nft1, setNft1] = useState(defaultNftState)
-  const [nft2, setNft2] = useState(defaultNftState)
-  const [nft3, setNft3] = useState(defaultNftState)
+  const { address } = useAccount()
+  const [tokenURIInfos, setTokenUriInfos] = useState<tokenURIInfo[]>([])
 
   const { data, isError, isLoading } = useContractReads({
     contracts: [
@@ -47,33 +57,81 @@ export default function Home() {
     ],
   })
 
+  const { write: transferNFT } = useContractWrite({
+    ...nftContract,
+    functionName: "transferNFT",
+  })
+
+  const { write: mint } = useContractWrite({
+    ...nftContract,
+    functionName: "mint",
+  })
+
+  const handleMintNFT = async () => {
+    try {
+      const data = await readContract({
+        address: nftContractAddress,
+        abi: nftABI,
+        functionName: "getMintedTokenIds",
+      })
+
+      const nextTokenId = String(data).split(",").length + 1
+
+      mint({
+        args: [address, nextTokenId],
+      })
+    } catch (e) {
+      console.log("eeee", e)
+    }
+  }
+
+  const handleTransferNFT = (owner: string, tokenId: number, text: string) => {
+    const url = `${fakejsonUri}${text?.length ? text : "Hi"}`
+
+    transferNFT({
+      args: [owner, address, tokenId, url],
+    })
+  }
+
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || !data) return
 
-    const { result: token1URI } = data?.[1] || {}
-    const { result: token1Owner } = data?.[2] || {}
-    if (token1URI && token1Owner) {
-      fetch(token1URI.toString())
-        .then((res) => res.json())
-        .then((data) => setNft1({ ...data, owner: token1Owner }))
+    const fetchNFTData = async () => {
+      let _tokenUriInfos: tokenURIInfo[] = []
+
+      const fetchRequests = []
+
+      for (let i = 1; i < data.length; i += 2) {
+        const { result: uri, status: uriStatus } = data[i]
+        const { result: owner, status: ownerStatus } = data[i + 1]
+
+        if (uriStatus !== "success" || ownerStatus !== "success") continue
+        if (
+          uri &&
+          owner &&
+          uri.toString().length > 0 &&
+          owner.toString().length > 0
+        ) {
+          fetchRequests.push(
+            fetch(uri.toString())
+              .then((res) => res.json())
+              .then((data) =>
+                _tokenUriInfos.push({
+                  tokenId: (i + 1) / 2,
+                  owner: owner,
+                  ...data,
+                })
+              )
+          )
+        }
+      }
+
+      await Promise.all(fetchRequests)
+      console.log("_tokenUriInfos", _tokenUriInfos)
+      setTokenUriInfos(_tokenUriInfos)
     }
 
-    const { result: token2URI } = data?.[3] || {}
-    const { result: token2Owner } = data?.[4] || {}
-    console.log("aaaaaaa2", token2URI)
-    if (token2URI && token2Owner) {
-      fetch(token2URI.toString())
-        .then((res) => res.json())
-        .then((data) => setNft2({ ...data, owner: token2Owner }))
-    }
-
-    const { result: token3URI } = data?.[5] || {}
-    const { result: token3Owner } = data?.[6] || {}
-    if (token3URI && token3Owner) {
-      fetch(token3URI.toString())
-        .then((res) => res.json())
-        .then((data) => setNft3({ ...data, owner: token3Owner }))
-    }
+    fetchNFTData()
   }, [isLoading])
 
   return (
@@ -92,30 +150,26 @@ export default function Home() {
           </p>
         </div>
         <div className="py-12 max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
-          {nft1.owner.length !== 0 && (
+          {tokenURIInfos.map(({ tokenId, name, description, image, owner }) => (
             <NFTCard
-              name={nft1.name}
-              description={nft1.description}
-              imageURL={nft1.image}
-              owner={nft1.owner}
+              key={tokenId}
+              tokenId={tokenId}
+              name={name}
+              description={description}
+              imageURL={image}
+              owner={owner}
+              onClick={handleTransferNFT}
             />
-          )}
-          {nft2.owner.length !== 0 && (
-            <NFTCard
-              name={nft2.name}
-              description={nft2.description}
-              imageURL={nft2.image}
-              owner={nft2.owner}
-            />
-          )}
-          {nft3.owner.length !== 0 && (
-            <NFTCard
-              name={nft3.name}
-              description={nft3.description}
-              imageURL={nft3.image}
-              owner={nft3.owner}
-            />
-          )}
+          ))}
+          <div className="flex h-120 w-72 rounded shadow-lg mx-auto border border-palette-lighter">
+            <button
+              className="bg-teal-500 hover:bg-teal-700 border-teal-500 hover:border-teal-700 text-sm border-4 text-white m-auto py-1 px-2 rounded"
+              type="button"
+              onClick={() => handleMintNFT()}
+            >
+              Mint New One
+            </button>
+          </div>
         </div>
       </main>
     </div>

@@ -8,14 +8,7 @@ import {
   getDefaultWallets,
 } from "@rainbow-me/rainbowkit"
 import { WagmiConfig, configureChains, createConfig } from "wagmi"
-import {
-  arbitrum,
-  goerli,
-  mainnet,
-  optimism,
-  polygon,
-  zora,
-} from "wagmi/chains"
+import { mainnet, arbitrum, goerli } from "wagmi/chains"
 import {
   argentWallet,
   ledgerWallet,
@@ -24,11 +17,12 @@ import {
 import { publicProvider } from "wagmi/providers/public"
 
 const { chains, publicClient, webSocketPublicClient } = configureChains(
-  [mainnet, polygon, arbitrum, goerli],
+  [mainnet, arbitrum, goerli],
   [publicProvider()]
 )
 
-const projectId = "YOUR_PROJECT_ID"
+// wallet connect 0xCafe
+const projectId = "878496a195c4379b31e26ecba7cf9f66"
 
 const { wallets } = getDefaultWallets({
   appName: "RainbowKit demo",

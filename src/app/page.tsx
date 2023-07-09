@@ -4,37 +4,25 @@ import { useEffect, useState } from "react"
 import { readContract } from "@wagmi/core"
 
 import { ConnectButton } from "@rainbow-me/rainbowkit"
-import Image from "next/image"
 import { NFTCard } from "@/components/NFTCard"
 import nftABI from "@/contract/NFTabi.json"
 import {
+  readContracts,
   useAccount,
-  useContractReads,
+  useContractEvent,
   useContractWrite,
-  usePrepareContractWrite,
 } from "wagmi"
-
-const nftContractAddress = "0xC5eCb63B680Fd35fb6d2ca2eb29d4Fbd489a1EDc"
-const fakejsonUri =
-  "https://www.fakejson.online/api/json?name=AAABBBCCC&description=This%20image%20shows%20the%20true%20nature%20of%20NFT.&image=https://fakeimg.pl/500x500/?text="
+import {
+  CONTRACT_ADDRESS,
+  getTokenIdUrl,
+  getOpenseaUpdateMetadataUrl,
+} from "@/constants"
 
 const nftContract: Record<string, any> = {
-  address: nftContractAddress,
+  address: CONTRACT_ADDRESS,
   abi: nftABI,
 }
 
-const contractCalls = [1, 2, 3].flatMap((tokenId) => [
-  {
-    ...nftContract,
-    functionName: "tokenURI",
-    args: [tokenId],
-  },
-  {
-    ...nftContract,
-    functionName: "ownerOf",
-    args: [tokenId],
-  },
-])
 interface tokenURIInfo {
   tokenId: number
   name: string
@@ -45,17 +33,8 @@ interface tokenURIInfo {
 
 export default function Home() {
   const { address } = useAccount()
-  const [tokenURIInfos, setTokenUriInfos] = useState<tokenURIInfo[]>([])
 
-  const { data, isError, isLoading } = useContractReads({
-    contracts: [
-      {
-        ...nftContract,
-        functionName: "symbol",
-      },
-      ...contractCalls,
-    ],
-  })
+  const [tokenURIInfos, setTokenUriInfos] = useState<tokenURIInfo[]>([])
 
   const { write: transferNFT } = useContractWrite({
     ...nftContract,
@@ -69,70 +48,108 @@ export default function Home() {
 
   const handleMintNFT = async () => {
     try {
-      const data = await readContract({
-        address: nftContractAddress,
-        abi: nftABI,
-        functionName: "getMintedTokenIds",
-      })
-
-      const nextTokenId = String(data).split(",").length + 1
-
       mint({
-        args: [address, nextTokenId],
+        args: [address],
       })
     } catch (e) {
       console.log("eeee", e)
     }
   }
 
-  const handleTransferNFT = (owner: string, tokenId: number, text: string) => {
-    const url = `${fakejsonUri}${text?.length ? text : "Hi"}`
-
+  const handleTransferNFT = (
+    owner: string,
+    tokenId: number,
+    text: string = "Hi"
+  ) => {
     transferNFT({
-      args: [owner, address, tokenId, url],
+      args: [owner, address, tokenId, getTokenIdUrl(text)],
     })
+
+    // call opensea to change
+    try {
+      fetch(getOpenseaUpdateMetadataUrl(tokenId))
+    } catch {}
   }
 
-  useEffect(() => {
-    if (isLoading || !data) return
+  const fetchNFTInfo = async () => {
+    // 1. fetch current token id
+    const _currentTokenId = await readContract({
+      address: CONTRACT_ADDRESS,
+      abi: nftABI,
+      functionName: "currentTokenId",
+    })
 
-    const fetchNFTData = async () => {
-      let _tokenUriInfos: tokenURIInfo[] = []
+    const currentTokenId = Number(_currentTokenId)
 
-      const fetchRequests = []
-
-      for (let i = 1; i < data.length; i += 2) {
-        const { result: uri, status: uriStatus } = data[i]
-        const { result: owner, status: ownerStatus } = data[i + 1]
-
-        if (uriStatus !== "success" || ownerStatus !== "success") continue
-        if (
-          uri &&
-          owner &&
-          uri.toString().length > 0 &&
-          owner.toString().length > 0
-        ) {
-          fetchRequests.push(
-            fetch(uri.toString())
-              .then((res) => res.json())
-              .then((data) =>
-                _tokenUriInfos.push({
-                  tokenId: (i + 1) / 2,
-                  owner: owner,
-                  ...data,
-                })
-              )
-          )
+    // 2. fetch all tokenURI
+    let contractCalls: any[] = []
+    for (let i = 1; i <= currentTokenId; i++) {
+      contractCalls.push(
+        {
+          ...nftContract,
+          functionName: "tokenURI",
+          args: [i],
+        },
+        {
+          ...nftContract,
+          functionName: "ownerOf",
+          args: [i],
         }
-      }
-
-      await Promise.all(fetchRequests)
-      console.log("_tokenUriInfos", _tokenUriInfos)
-      setTokenUriInfos(_tokenUriInfos)
+      )
     }
 
-    fetchNFTData()
-  }, [isLoading])
+    const data = await readContracts({
+      contracts: contractCalls,
+    })
+
+    // 3. fetch all nft info(images)
+    const fetchRequests = []
+    let _tokenUriInfos: tokenURIInfo[] = []
+    for (let i = 0; i < data.length; i += 2) {
+      const { result: uri, status: uriStatus } = data[i]
+      const { result: owner, status: ownerStatus } = data[i + 1]
+
+      if (uriStatus !== "success" || ownerStatus !== "success") continue
+      if (
+        uri &&
+        owner &&
+        uri.toString().length > 0 &&
+        owner.toString().length > 0
+      ) {
+        fetchRequests.push(
+          fetch(uri.toString())
+            .then((res) => res.json())
+            .then((data) =>
+              _tokenUriInfos.push({
+                tokenId: i / 2 + 1,
+                owner: owner,
+                ...data,
+              })
+            )
+        )
+      }
+    }
+
+    await Promise.all(fetchRequests)
+
+    setTokenUriInfos(_tokenUriInfos.sort((a, b) => a.tokenId - b.tokenId))
+  }
+
+  // fetch NFT info
+  useEffect(() => {
+    fetchNFTInfo()
+  }, [])
+
+  // keep listen contract event
+  useContractEvent({
+    address: CONTRACT_ADDRESS,
+    abi: nftABI,
+    eventName: "NFTChanged",
+    listener(log) {
+      console.info("NFTChanged", log)
+      fetchNFTInfo()
+    },
+  })
 
   return (
     <div className="flex flex-col justify-between min-h-screen">
@@ -150,11 +167,10 @@ export default function Home() {
           </p>
         </div>
         <div className="py-12 max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
-          {tokenURIInfos.map(({ tokenId, name, description, image, owner }) => (
+          {tokenURIInfos.map(({ tokenId, description, image, owner }) => (
             <NFTCard
               key={tokenId}
               tokenId={tokenId}
-              name={name}
               description={description}
               imageURL={image}
               owner={owner}

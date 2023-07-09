@@ -1,10 +1,10 @@
 import Image from "next/image"
 import { useRef } from "react"
-import { useAccount } from "wagmi"
+import { useAccount, useNetwork } from "wagmi"
+import { OPENSEA_URL } from "@/constants"
 
 interface NFTCardProps {
   tokenId: number
-  name: string
   description: string
   imageURL: string
   owner: string
@@ -13,7 +13,6 @@ interface NFTCardProps {
 
 export function NFTCard({
   tokenId,
-  name,
   description,
   imageURL,
   owner,
@@ -21,25 +20,39 @@ export function NFTCard({
 }: NFTCardProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const { address } = useAccount()
+  const { chain } = useNetwork()
 
   return (
-    <a className="h-120 w-72 rounded shadow-lg mx-auto border border-palette-lighter">
+    <div className="h-120 w-72 rounded shadow-lg mx-auto border border-palette-lighter">
       <div className="h-72 border-b-2 border-palette-lighter relative">
-        <Image
-          src={imageURL}
-          alt={description}
-          layout="fill"
-          className="transform duration-500 ease-in-out hover:scale-110"
-        />
+        <a
+          href={`${OPENSEA_URL}/${tokenId}`}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <Image
+            src={imageURL}
+            alt={description}
+            layout="fill"
+            className="transform duration-500 ease-in-out hover:scale-110"
+          />
+        </a>
       </div>
       <div className="h-48 relative">
         <div className="font-primary text-palette-primary text-2xl pt-4 px-4 font-semibold">
-          {name}
+          {description}
         </div>
         <div className="text-lg text-gray-600 p-4 font-primary font-light">
-          Owner:
-          {`${owner.slice(0, 6)}...${owner.slice(-4)}`}{" "}
-          {owner === address && " Me"}
+          Owner:{" "}
+          <a
+            href={`${chain?.blockExplorers?.default.url}/address/${owner}`}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {owner === address
+              ? "ME"
+              : `${owner.slice(0, 6)}...${owner.slice(-4)}`}
+          </a>
         </div>
 
         <div
@@ -68,7 +81,7 @@ export function NFTCard({
           </form>
         </div>
       </div>
-    </a>
+    </div>
   )
 }
 // {
